@@ -2,12 +2,11 @@
 name: Daily DagligCeres Instagram Post
 
 on:
-  schedule:
-    # Run every hour. Python checks Copenhagen time below.
-    - cron: "0 * * * *"
-
-  # Allows you to test/run it manually from GitHub.
   workflow_dispatch:
+
+  schedule:
+    - cron: "0 12 * * *"
+      timezone: "Europe/Copenhagen"
 
 jobs:
   post-to-instagram:
@@ -33,53 +32,26 @@ jobs:
         run: |
           python <<'PY'
           import os
-          import sys
           import traceback
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
 
-          # --------------------------------------------------
-          # CHECK COPENHAGEN TIME
-          # --------------------------------------------------
+          from composio import Composio, App
 
-          now = datetime.now(ZoneInfo("Europe/Copenhagen"))
-
-          print(
-              f"🇩🇰 Copenhagen time: "
-              f"{now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-          )
-
-          # Only continue around 12:00 Danish time.
-          if now.hour != 12:
-              print("⏭️ Not 12:00 in Denmark. Skipping.")
-              sys.exit(0)
-
-          print("🕛 It is 12:00 Danish time.")
           print("🚀 Starting DagligCeres Instagram post...")
-
-          # --------------------------------------------------
-          # CHECK API KEY
-          # --------------------------------------------------
 
           api_key = os.environ.get("COMPOSIO_API_KEY")
 
           if not api_key:
-              print("❌ COMPOSIO_API_KEY is missing.")
-              sys.exit(1)
-
-          # --------------------------------------------------
-          # COMPOSIO
-          # --------------------------------------------------
-
-          from composio import Composio, App
+              raise RuntimeError(
+                  "COMPOSIO_API_KEY is not available."
+              )
 
           composio = Composio(api_key=api_key)
 
           try:
 
-              # ------------------------------------------------
-              # INSTAGRAM TOOLS
-              # ------------------------------------------------
+              # ---------------------------------------------
+              # INSTAGRAM
+              # ---------------------------------------------
 
               print("📱 Loading Instagram tools...")
 
@@ -87,16 +59,12 @@ jobs:
                   apps=[App.INSTAGRAM]
               )
 
-              print("Available Instagram tools:")
-
               for tool in instagram_tools:
-                  print(f"  - {tool.name}")
+                  print(f"Instagram tool: {tool.name}")
 
-              # ------------------------------------------------
-              # GET INSTAGRAM ACCOUNT
-              # ------------------------------------------------
-
-              print("📊 Getting Instagram account information...")
+              # ---------------------------------------------
+              # INSTAGRAM ACCOUNT
+              # ---------------------------------------------
 
               user_info_tool = next(
                   tool
@@ -108,15 +76,11 @@ jobs:
                   "ig_user_id": "me"
               })
 
-              print(f"Instagram account response: {user_info_result}")
-
               ig_user_id = user_info_result["id"]
-
               username = user_info_result.get(
                   "username",
                   "Unknown"
               )
-
               media_count = user_info_result.get(
                   "media_count",
                   0
@@ -124,12 +88,12 @@ jobs:
 
               day_number = media_count + 1
 
-              print(f"👤 Account: @{username}")
-              print(f"📅 Posting: Dag {day_number}")
+              print(f"👤 Instagram: @{username}")
+              print(f"📅 Posting Dag {day_number}")
 
-              # ------------------------------------------------
+              # ---------------------------------------------
               # GOOGLE DRIVE
-              # ------------------------------------------------
+              # ---------------------------------------------
 
               print("☁️ Loading Google Drive tools...")
 
@@ -137,10 +101,8 @@ jobs:
                   apps=[App.GOOGLEDRIVE]
               )
 
-              print("Available Google Drive tools:")
-
               for tool in drive_tools:
-                  print(f"  - {tool.name}")
+                  print(f"Google Drive tool: {tool.name}")
 
               download_tool = next(
                   tool
@@ -148,13 +110,11 @@ jobs:
                   if tool.name == "GOOGLEDRIVE_DOWNLOAD_FILE"
               )
 
-              print("⬇️ Downloading image from Google Drive...")
+              print("⬇️ Downloading image...")
 
               download_result = download_tool.execute({
                   "fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"
               })
-
-              print("Google Drive response received.")
 
               image_url = (
                   download_result[
@@ -162,16 +122,11 @@ jobs:
                   ]["s3url"]
               )
 
-              if not image_url:
-                  raise RuntimeError(
-                      "Google Drive did not return an image URL."
-                  )
-
               print("✅ Image downloaded.")
 
-              # ------------------------------------------------
-              # CREATE INSTAGRAM CONTAINER
-              # ------------------------------------------------
+              # ---------------------------------------------
+              # CREATE INSTAGRAM POST
+              # ---------------------------------------------
 
               print("📷 Creating Instagram media container...")
 
@@ -187,19 +142,15 @@ jobs:
                   "caption": f"Dag {day_number}"
               })
 
-              print(
-                  f"Container response: {container_result}"
-              )
-
               container_id = container_result["id"]
 
               print(
                   f"✅ Container created: {container_id}"
               )
 
-              # ------------------------------------------------
-              # PUBLISH TO INSTAGRAM
-              # ------------------------------------------------
+              # ---------------------------------------------
+              # PUBLISH
+              # ---------------------------------------------
 
               print("🚀 Publishing to Instagram...")
 
@@ -217,30 +168,18 @@ jobs:
               })
 
               print(
-                  f"Publish response: {publish_result}"
+                  f"🎉 SUCCESS! Posted Dag {day_number}"
               )
 
-              media_id = publish_result.get("id")
-
-              print("")
-              print("🎉 ===============================")
-              print("🎉 SUCCESS!")
-              print(f"🎉 Posted Dag {day_number}")
-              print(f"🎉 Instagram: @{username}")
-              print(f"🎉 Media ID: {media_id}")
-              print("🎉 ===============================")
+              print(
+                  f"📱 Media ID: "
+                  f"{publish_result.get('id')}"
+              )
 
           except Exception as e:
-
-              print("")
-              print("❌ ===============================")
-              print("❌ INSTAGRAM POST FAILED")
-              print("❌ ===============================")
-              print(f"❌ Error: {e}")
-              print("")
-
+              print("❌ Instagram posting failed:")
+              print(str(e))
               traceback.print_exc()
-
-              sys.exit(1)
+              raise
           PY
 ```
