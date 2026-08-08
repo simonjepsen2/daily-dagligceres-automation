@@ -33,7 +33,7 @@ jobs:
         import time
         from datetime import datetime
         
-        # Composio API configuration
+        # Composio API v3 configuration
         API_KEY = os.environ.get('COMPOSIO_API_KEY')
         if not API_KEY:
             print("❌ ERROR: COMPOSIO_API_KEY not found in environment variables")
@@ -41,15 +41,16 @@ jobs:
             
         print(f"✅ API Key found: {API_KEY[:10]}...")
         
-        BASE_URL = "https://backend.composio.dev/api/v1/actions"
+        # Updated to v3 API endpoint
+        BASE_URL = "https://backend.composio.dev/api/v3/actions"
         
         headers = {
-            "X-API-Key": API_KEY,
+            "x-api-key": API_KEY,
             "Content-Type": "application/json"
         }
         
         def execute_tool(tool_slug, arguments):
-            """Execute a Composio tool with detailed error handling"""
+            """Execute a Composio tool with v3 API"""
             payload = {
                 "tools": [{
                     "tool_slug": tool_slug,
@@ -58,7 +59,7 @@ jobs:
                 "sync_response_to_workbench": False
             }
             
-            print(f"🔧 Executing {tool_slug} with args: {json.dumps(arguments, indent=2)}")
+            print(f"🔧 Executing {tool_slug}")
             
             try:
                 response = requests.post(f"{BASE_URL}/multi-execute", headers=headers, json=payload)
@@ -70,7 +71,6 @@ jobs:
                     raise Exception(f"HTTP {response.status_code}: {response.text}")
                 
                 result = response.json()
-                print(f"📦 Response data: {json.dumps(result, indent=2)}")
                 
                 if result.get("data", {}).get("success_count") == 1:
                     return result["data"]["results"][0]["response"]["data"]
@@ -105,7 +105,7 @@ jobs:
             })
             
             image_url = download_result["downloaded_file_content"]["s3url"]
-            print(f"✅ Image downloaded: {image_url}")
+            print(f"✅ Image downloaded successfully")
             
             # Step 3: Create Instagram media container
             print("📷 Creating Instagram media container...")
