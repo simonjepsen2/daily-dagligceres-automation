@@ -13,88 +13,85 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Install curl
-      run: sudo apt-get update && sudo apt-get install -y curl jq
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Composio SDK
+      run: |
+        pip install composio-core
         
     - name: Post DagligCeres to Instagram
       env:
         COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
       run: |
-        #!/bin/bash
-        set -e
+        python << 'EOF'
+        import os
+        from composio import Composio, App
+        from datetime import datetime
         
-        echo "🚀 Starting daily Instagram post..."
+        # Initialize Composio client
+        composio = Composio(api_key=os.environ['COMPOSIO_API_KEY'])
         
-        # Function to call Composio API
-        call_composio() {
-            local tool_slug="$1"
-            local arguments="$2"
+        try:
+            print(f"🚀 Starting daily Instagram post at {datetime.now()}")
             
-            echo "🔧 Executing $tool_slug"
+            # Step 1: Get Instagram account info for day numbering
+            print("📊 Getting Instagram account info...")
+            instagram_tools = composio.get_tools(apps=[App.INSTAGRAM])
+            user_info_tool = next(tool for tool in instagram_tools if tool.name == "INSTAGRAM_GET_USER_INFO")
             
-            local response=$(curl -s -X POST \
-                "https://backend.composio.dev/api/v1/actions/multi-execute" \
-                -H "X-API-Key: $COMPOSIO_API_KEY" \
-                -H "Content-Type: application/json" \
-                -d "{
-                    \"tools\": [{
-                        \"tool_slug\": \"$tool_slug\",
-                        \"arguments\": $arguments
-                    }],
-                    \"sync_response_to_workbench\": false
-                }")
+            user_info_result = user_info_tool.execute({"ig_user_id": "me"})
+            media_count = user_info_result.get("media_count", 0)
+            day_number = media_count + 1
+            ig_user_id = user_info_result["id"]
+            username = user_info_result.get("username", "Unknown")
             
-            echo "📡 Response received"
+            print(f"📅 Today will be: Dag {day_number}")
+            print(f"👤 Account: @{username}")
             
-            # Check if successful
-            local success_count=$(echo "$response" | jq -r '.data.success_count // 0')
-            if [ "$success_count" -eq 1 ]; then
-                echo "$response" | jq -r '.data.results[0].response.data'
-            else
-                echo "❌ Error: $response"
-                exit 1
-            fi
-        }
+            # Step 2: Download image from Google Drive
+            print("⬇️ Downloading DagligCeres from Google Drive...")
+            drive_tools = composio.get_tools(apps=[App.GOOGLEDRIVE])
+            download_tool = next(tool for tool in drive_tools if tool.name == "GOOGLEDRIVE_DOWNLOAD_FILE")
+            
+            download_result = download_tool.execute({"fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"})
+            image_url = download_result["downloaded_file_content"]["s3url"]
+            print("✅ Image downloaded successfully")
+            
+            # Step 3: Create Instagram media container
+            print("📷 Creating Instagram media container...")
+            create_media_tool = next(tool for tool in instagram_tools if tool.name == "INSTAGRAM_POST_IG_USER_MEDIA")
+            
+            container_result = create_media_tool.execute({
+                "ig_user_id": ig_user_id,
+                "image_url": image_url,
+                "caption": f"Dag {day_number}"
+            })
+            
+            container_id = container_result["id"]
+            print(f"✅ Container created: {container_id}")
+            
+            # Step 4: Publish to Instagram
+            print("🚀 Publishing to Instagram...")
+            publish_tool = next(tool for tool in instagram_tools if tool.name == "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH")
+            
+            publish_result = publish_tool.execute({
+                "ig_user_id": ig_user_id,
+                "creation_id": container_id,
+                "max_wait_seconds": 120
+            })
+            
+            media_id = publish_result["id"]
+            
+            print(f"🎉 SUCCESS! Posted 'Dag {day_number}' to Instagram!")
+            print(f"📱 Media ID: {media_id}")
+            
+        except Exception as e:
+            print(f"❌ FINAL ERROR: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            exit(1)
         
-        # Step 1: Get Instagram account info
-        echo "📊 Getting Instagram account info..."
-        user_info=$(call_composio "INSTAGRAM_GET_USER_INFO" '{"ig_user_id": "me"}')
-        
-        media_count=$(echo "$user_info" | jq -r '.media_count // 0')
-        day_number=$((media_count + 1))
-        ig_user_id=$(echo "$user_info" | jq -r '.id')
-        username=$(echo "$user_info" | jq -r '.username')
-        
-        echo "📅 Today will be: Dag $day_number"
-        echo "👤 Account: @$username"
-        
-        # Step 2: Download image from Google Drive
-        echo "⬇️ Downloading DagligCeres from Google Drive..."
-        download_result=$(call_composio "GOOGLEDRIVE_DOWNLOAD_FILE" '{"fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"}')
-        
-        image_url=$(echo "$download_result" | jq -r '.downloaded_file_content.s3url')
-        echo "✅ Image downloaded successfully"
-        
-        # Step 3: Create Instagram media container
-        echo "📷 Creating Instagram media container..."
-        container_result=$(call_composio "INSTAGRAM_POST_IG_USER_MEDIA" "{
-            \"ig_user_id\": \"$ig_user_id\",
-            \"image_url\": \"$image_url\",
-            \"caption\": \"Dag $day_number\"
-        }")
-        
-        container_id=$(echo "$container_result" | jq -r '.id')
-        echo "✅ Container created: $container_id"
-        
-        # Step 4: Publish to Instagram
-        echo "🚀 Publishing to Instagram..."
-        publish_result=$(call_composio "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH" "{
-            \"ig_user_id\": \"$ig_user_id\",
-            \"creation_id\": \"$container_id\",
-            \"max_wait_seconds\": 120
-        }")
-        
-        media_id=$(echo "$publish_result" | jq -r '.id')
-        
-        echo "🎉 SUCCESS! Posted 'Dag $day_number' to Instagram!"
-        echo "📱 Media ID: $media_id"
+        EOF
