@@ -1,12 +1,10 @@
-```yaml
 name: Daily DagligCeres Instagram Post
 
 on:
   workflow_dispatch:
 
   schedule:
-    - cron: "0 12 * * *"
-      timezone: "Europe/Copenhagen"
+    - cron: "10 10 * * *"
 
 jobs:
   post-to-instagram:
@@ -42,16 +40,16 @@ jobs:
 
           if not api_key:
               raise RuntimeError(
-                  "COMPOSIO_API_KEY is not available."
+                  "COMPOSIO_API_KEY is missing from GitHub Secrets."
               )
 
           composio = Composio(api_key=api_key)
 
           try:
 
-              # ---------------------------------------------
+              # -------------------------------
               # INSTAGRAM
-              # ---------------------------------------------
+              # -------------------------------
 
               print("📱 Loading Instagram tools...")
 
@@ -62,9 +60,11 @@ jobs:
               for tool in instagram_tools:
                   print(f"Instagram tool: {tool.name}")
 
-              # ---------------------------------------------
-              # INSTAGRAM ACCOUNT
-              # ---------------------------------------------
+              # -------------------------------
+              # GET INSTAGRAM ACCOUNT
+              # -------------------------------
+
+              print("📊 Getting Instagram account...")
 
               user_info_tool = next(
                   tool
@@ -81,6 +81,7 @@ jobs:
                   "username",
                   "Unknown"
               )
+
               media_count = user_info_result.get(
                   "media_count",
                   0
@@ -91,9 +92,9 @@ jobs:
               print(f"👤 Instagram: @{username}")
               print(f"📅 Posting Dag {day_number}")
 
-              # ---------------------------------------------
+              # -------------------------------
               # GOOGLE DRIVE
-              # ---------------------------------------------
+              # -------------------------------
 
               print("☁️ Loading Google Drive tools...")
 
@@ -124,11 +125,11 @@ jobs:
 
               print("✅ Image downloaded.")
 
-              # ---------------------------------------------
-              # CREATE INSTAGRAM POST
-              # ---------------------------------------------
+              # -------------------------------
+              # CREATE INSTAGRAM CONTAINER
+              # -------------------------------
 
-              print("📷 Creating Instagram media container...")
+              print("📷 Creating Instagram post...")
 
               create_media_tool = next(
                   tool
@@ -148,9 +149,9 @@ jobs:
                   f"✅ Container created: {container_id}"
               )
 
-              # ---------------------------------------------
+              # -------------------------------
               # PUBLISH
-              # ---------------------------------------------
+              # -------------------------------
 
               print("🚀 Publishing to Instagram...")
 
@@ -167,19 +168,28 @@ jobs:
                   "max_wait_seconds": 120
               })
 
+              print("")
+              print("🎉 ===============================")
+              print("🎉 INSTAGRAM POST SUCCESSFUL")
+              print(f"🎉 Account: @{username}")
+              print(f"🎉 Caption: Dag {day_number}")
               print(
-                  f"🎉 SUCCESS! Posted Dag {day_number}"
-              )
-
-              print(
-                  f"📱 Media ID: "
+                  f"🎉 Media ID: "
                   f"{publish_result.get('id')}"
               )
+              print("🎉 ===============================")
 
           except Exception as e:
-              print("❌ Instagram posting failed:")
-              print(str(e))
+
+              print("")
+              print("❌ ===============================")
+              print("❌ INSTAGRAM POST FAILED")
+              print("❌ ===============================")
+              print(f"❌ Error: {e}")
+              print("")
+
               traceback.print_exc()
+
               raise
           PY
 ```
