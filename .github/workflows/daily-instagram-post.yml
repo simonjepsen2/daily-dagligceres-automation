@@ -1,4 +1,3 @@
-```yaml
 name: Daily DagligCeres Instagram Post
 
 on:
@@ -29,4 +28,3 @@ jobs:
         env:
           COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
         run: python post_instagram.py
-```
