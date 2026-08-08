@@ -1,0 +1,114 @@
+name: Daily DagligCeres Instagram Post
+
+on:
+  schedule:
+    # Runs daily at 11:00 AM UTC (12:00 PM CET / 1:00 PM CEST Denmark time)
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Allows manual triggering for testing
+
+jobs:
+  post-to-instagram:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests
+        
+    - name: Post DagligCeres to Instagram
+      env:
+        COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+      run: |
+        python << 'EOF'
+        import requests
+        import json
+        import os
+        import time
+        from datetime import datetime
+        
+        # Composio API configuration
+        API_KEY = os.environ['COMPOSIO_API_KEY']
+        BASE_URL = "https://backend.composio.dev/api/v1/actions"
+        
+        headers = {
+            "X-API-Key": API_KEY,
+            "Content-Type": "application/json"
+        }
+        
+        def execute_tool(tool_slug, arguments):
+            """Execute a Composio tool"""
+            payload = {
+                "tools": [{
+                    "tool_slug": tool_slug,
+                    "arguments": arguments
+                }],
+                "sync_response_to_workbench": False
+            }
+            
+            response = requests.post(f"{BASE_URL}/multi-execute", headers=headers, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            if result["data"]["success_count"] == 1:
+                return result["data"]["results"][0]["response"]["data"]
+            else:
+                raise Exception(f"Tool execution failed: {result}")
+        
+        try:
+            print(f"🚀 Starting daily Instagram post at {datetime.now()}")
+            
+            # Step 1: Get current Instagram post count for day numbering
+            print("📊 Getting Instagram account info...")
+            user_info = execute_tool("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me"})
+            current_count = user_info.get("media_count", 0)
+            day_number = current_count + 1
+            
+            print(f"📅 Today will be: Dag {day_number}")
+            
+            # Step 2: Download DagligCeres image from Google Drive
+            print("⬇️ Downloading DagligCeres from Google Drive...")
+            download_result = execute_tool("GOOGLEDRIVE_DOWNLOAD_FILE", {
+                "fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"
+            })
+            
+            image_url = download_result["downloaded_file_content"]["s3url"]
+            print(f"✅ Image downloaded: {image_url}")
+            
+            # Step 3: Create Instagram media container
+            print("📷 Creating Instagram media container...")
+            container_result = execute_tool("INSTAGRAM_POST_IG_USER_MEDIA", {
+                "ig_user_id": user_info["id"],
+                "image_url": image_url,
+                "caption": f"Dag {day_number}"
+            })
+            
+            container_id = container_result["id"]
+            print(f"✅ Container created: {container_id}")
+            
+            # Step 4: Publish to Instagram
+            print("🚀 Publishing to Instagram...")
+            publish_result = execute_tool("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", {
+                "ig_user_id": user_info["id"],
+                "creation_id": container_id,
+                "max_wait_seconds": 120
+            })
+            
+            media_id = publish_result["id"]
+            
+            print(f"🎉 SUCCESS! Posted 'Dag {day_number}' to Instagram!")
+            print(f"📱 Media ID: {media_id}")
+            print(f"👤 Account: @{user_info.get('username', 'Unknown')}")
+            
+        except Exception as e:
+            print(f"❌ ERROR: {str(e)}")
+            exit(1)
+        
+        EOF
