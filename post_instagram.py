@@ -5,25 +5,26 @@ import traceback
 from composio import Composio
 
 
-print("🚀 Starting DagligCeres Instagram post...")
-
-
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-api_key = os.environ.get("COMPOSIO_API_KEY")
+COMPOSIO_API_KEY = os.environ.get("COMPOSIO_API_KEY")
 
-if not api_key:
-    print("❌ COMPOSIO_API_KEY is missing from GitHub Secrets.")
+USER_ID = "pg-test-469e4bb8-661d-424b-91f3-dd8309694059"
+
+GOOGLE_DRIVE_FILE_ID = "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"
+
+
+# ============================================================
+# CHECK API KEY
+# ============================================================
+
+print("🚀 Starting DagligCeres Instagram automation...")
+
+if not COMPOSIO_API_KEY:
+    print("❌ COMPOSIO_API_KEY is missing.")
     sys.exit(1)
-
-# IMPORTANT:
-# This must match the user/entity you use for your Composio
-# connected Instagram and Google Drive accounts.
-#
-# If your Composio setup uses a different user ID, change this.
-USER_ID = "default"
 
 
 # ============================================================
@@ -31,33 +32,53 @@ USER_ID = "default"
 # ============================================================
 
 composio = Composio(
-    api_key=api_key
+    api_key=COMPOSIO_API_KEY,
+    toolkit_versions={
+        "instagram": "20260730_00",
+        "googledrive": "20260721_00",
+    },
 )
 
 
 try:
 
     # ========================================================
-    # GET INSTAGRAM TOOLS
+    # STEP 1 — GET INSTAGRAM TOOLS
     # ========================================================
 
+    print("")
     print("📱 Loading Instagram tools...")
 
     instagram_tools = composio.tools.get(
-        USER_ID,
-        toolkits=["INSTAGRAM"]
+        user_id=USER_ID,
+        toolkits=["INSTAGRAM"],
+        limit=50,
     )
 
-    print("Available Instagram tools:")
-
-    for tool in instagram_tools:
-        print(f"  - {tool.slug}")
+    print(f"✅ Loaded {len(instagram_tools)} Instagram tools.")
 
 
     # ========================================================
-    # GET INSTAGRAM ACCOUNT
+    # STEP 2 — GET GOOGLE DRIVE TOOLS
     # ========================================================
 
+    print("")
+    print("☁️ Loading Google Drive tools...")
+
+    drive_tools = composio.tools.get(
+        user_id=USER_ID,
+        toolkits=["GOOGLEDRIVE"],
+        limit=100,
+    )
+
+    print(f"✅ Loaded {len(drive_tools)} Google Drive tools.")
+
+
+    # ========================================================
+    # STEP 3 — GET INSTAGRAM USER INFO
+    # ========================================================
+
+    print("")
     print("📊 Getting Instagram account information...")
 
     user_info_result = composio.tools.execute(
@@ -65,29 +86,38 @@ try:
         user_id=USER_ID,
         arguments={
             "ig_user_id": "me"
-        }
+        },
     )
 
-    print(
-        f"Instagram response: {user_info_result}"
-    )
+    print("Instagram response:")
+    print(user_info_result)
 
 
-    # Depending on the SDK response structure,
-    # the useful data may be in the returned object.
-    #
-    # Try to access it safely.
+    # ========================================================
+    # EXTRACT USER DATA
+    # ========================================================
+
+    user_data = user_info_result
 
     if isinstance(user_info_result, dict):
-        user_data = user_info_result.get(
-            "data",
-            user_info_result
+
+        if "data" in user_info_result:
+            user_data = user_info_result["data"]
+
+        if (
+            isinstance(user_data, dict)
+            and "data" in user_data
+        ):
+            user_data = user_data["data"]
+
+
+    if not isinstance(user_data, dict):
+        raise RuntimeError(
+            "Could not understand Instagram user response."
         )
-    else:
-        user_data = user_info_result
 
 
-    ig_user_id = user_data["id"]
+    ig_user_id = user_data.get("id")
 
     username = user_data.get(
         "username",
@@ -99,83 +129,94 @@ try:
         0
     )
 
+
+    if not ig_user_id:
+        raise RuntimeError(
+            "Instagram user ID was not returned."
+        )
+
+
     day_number = media_count + 1
 
 
-    print(f"👤 Instagram: @{username}")
-    print(f"📅 Posting: Dag {day_number}")
+    print(f"👤 Instagram account: @{username}")
+    print(f"🆔 Instagram user ID: {ig_user_id}")
+    print(f"📅 Today's post: Dag {day_number}")
 
 
     # ========================================================
-    # GOOGLE DRIVE
+    # STEP 4 — DOWNLOAD IMAGE FROM GOOGLE DRIVE
     # ========================================================
 
-    print("☁️ Loading Google Drive tools...")
-
-    drive_tools = composio.tools.get(
-        USER_ID,
-        toolkits=["GOOGLEDRIVE"]
-    )
-
-    print("Available Google Drive tools:")
-
-    for tool in drive_tools:
-        print(f"  - {tool.slug}")
-
-
-    # ========================================================
-    # DOWNLOAD IMAGE
-    # ========================================================
-
-    print("⬇️ Downloading DagligCeres image...")
+    print("")
+    print("☁️ Downloading image from Google Drive...")
 
     download_result = composio.tools.execute(
         "GOOGLEDRIVE_DOWNLOAD_FILE",
         user_id=USER_ID,
         arguments={
-            "fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"
-        }
+            "file_id": GOOGLE_DRIVE_FILE_ID
+        },
     )
 
 
-    print(
-        f"Google Drive response: {download_result}"
-    )
+    print("Google Drive response received.")
 
 
-    # Extract returned data
+    # ========================================================
+    # EXTRACT IMAGE URL
+    # ========================================================
+
+    download_data = download_result
 
     if isinstance(download_result, dict):
-        download_data = download_result.get(
-            "data",
-            download_result
+
+        if "data" in download_result:
+            download_data = download_result["data"]
+
+        if (
+            isinstance(download_data, dict)
+            and "data" in download_data
+        ):
+            download_data = download_data["data"]
+
+
+    if not isinstance(download_data, dict):
+        raise RuntimeError(
+            "Could not understand Google Drive response."
         )
-    else:
-        download_data = download_result
 
 
-    image_url = (
-        download_data[
-            "downloaded_file_content"
-        ]["s3url"]
+    downloaded_content = download_data.get(
+        "downloaded_file_content"
     )
+
+
+    if not downloaded_content:
+        raise RuntimeError(
+            "Google Drive did not return downloaded file content."
+        )
+
+
+    image_url = downloaded_content.get("s3url")
 
 
     if not image_url:
         raise RuntimeError(
-            "Google Drive did not return an image URL."
+            "Google Drive did not return an S3 URL."
         )
 
 
-    print("✅ Image downloaded successfully.")
+    print("✅ Image downloaded.")
+    print("✅ Temporary image URL received.")
 
 
     # ========================================================
-    # CREATE INSTAGRAM MEDIA CONTAINER
+    # STEP 5 — CREATE INSTAGRAM MEDIA CONTAINER
     # ========================================================
 
+    print("")
     print("📷 Creating Instagram media container...")
-
 
     container_result = composio.tools.execute(
         "INSTAGRAM_POST_IG_USER_MEDIA",
@@ -183,39 +224,59 @@ try:
         arguments={
             "ig_user_id": ig_user_id,
             "image_url": image_url,
-            "caption": f"Dag {day_number}"
-        }
+            "caption": f"Dag {day_number}",
+        },
     )
 
 
-    print(
-        f"Container response: {container_result}"
-    )
+    print("Instagram container response:")
+    print(container_result)
 
+
+    # ========================================================
+    # EXTRACT CONTAINER ID
+    # ========================================================
+
+    container_data = container_result
 
     if isinstance(container_result, dict):
-        container_data = container_result.get(
-            "data",
-            container_result
+
+        if "data" in container_result:
+            container_data = container_result["data"]
+
+        if (
+            isinstance(container_data, dict)
+            and "data" in container_data
+        ):
+            container_data = container_data["data"]
+
+
+    if not isinstance(container_data, dict):
+        raise RuntimeError(
+            "Could not understand Instagram container response."
         )
-    else:
-        container_data = container_result
 
 
-    container_id = container_data["id"]
+    container_id = container_data.get("id")
+
+
+    if not container_id:
+        raise RuntimeError(
+            "Instagram did not return a container ID."
+        )
 
 
     print(
-        f"✅ Container created: {container_id}"
+        f"✅ Instagram container created: {container_id}"
     )
 
 
     # ========================================================
-    # PUBLISH INSTAGRAM POST
+    # STEP 6 — PUBLISH TO INSTAGRAM
     # ========================================================
 
+    print("")
     print("🚀 Publishing to Instagram...")
-
 
     publish_result = composio.tools.execute(
         "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
@@ -223,28 +284,13 @@ try:
         arguments={
             "ig_user_id": ig_user_id,
             "creation_id": container_id,
-            "max_wait_seconds": 120
-        }
+            "max_wait_seconds": 120,
+        },
     )
 
 
-    print(
-        f"Publish response: {publish_result}"
-    )
-
-
-    if isinstance(publish_result, dict):
-        publish_data = publish_result.get(
-            "data",
-            publish_result
-        )
-    else:
-        publish_data = publish_result
-
-
-    media_id = publish_data.get(
-        "id"
-    )
+    print("Instagram publish response:")
+    print(publish_result)
 
 
     # ========================================================
@@ -252,26 +298,24 @@ try:
     # ========================================================
 
     print("")
-    print("🎉 =================================")
-    print("🎉 INSTAGRAM POST SUCCESSFUL")
-    print("🎉 =================================")
+    print("🎉 =======================================")
+    print("🎉 INSTAGRAM POST SUCCESSFUL!")
+    print("🎉 =======================================")
     print(f"🎉 Account: @{username}")
     print(f"🎉 Caption: Dag {day_number}")
-    print(f"🎉 Media ID: {media_id}")
-    print("🎉 =================================")
+    print(f"🎉 Container: {container_id}")
+    print("🎉 =======================================")
+
+
+except Exception as error:
+
     print("")
-
-
-except Exception as e:
-
-    print("")
-    print("❌ =================================")
-    print("❌ INSTAGRAM POST FAILED")
-    print("❌ =================================")
-    print(f"❌ Error: {e}")
+    print("❌ =======================================")
+    print("❌ INSTAGRAM AUTOMATION FAILED")
+    print("❌ =======================================")
+    print(f"❌ Error: {error}")
     print("")
 
     traceback.print_exc()
 
     sys.exit(1)
-    
