@@ -1,4 +1,3 @@
-```python
 import os
 import sys
 import traceback
@@ -233,4 +232,4 @@ except Exception as e:
     traceback.print_exc()
 
     sys.exit(1)
-```
+    
