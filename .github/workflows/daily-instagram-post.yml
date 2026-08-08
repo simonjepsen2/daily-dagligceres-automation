@@ -2,9 +2,8 @@ name: Daily DagligCeres Instagram Post
 
 on:
   schedule:
-    # Runs daily at 11:00 AM UTC (12:00 PM CET / 1:00 PM CEST Denmark time)
     - cron: '0 11 * * *'
-  workflow_dispatch: # Allows manual triggering for testing
+  workflow_dispatch:
 
 jobs:
   post-to-instagram:
@@ -35,7 +34,13 @@ jobs:
         from datetime import datetime
         
         # Composio API configuration
-        API_KEY = os.environ['COMPOSIO_API_KEY']
+        API_KEY = os.environ.get('COMPOSIO_API_KEY')
+        if not API_KEY:
+            print("❌ ERROR: COMPOSIO_API_KEY not found in environment variables")
+            exit(1)
+            
+        print(f"✅ API Key found: {API_KEY[:10]}...")
+        
         BASE_URL = "https://backend.composio.dev/api/v1/actions"
         
         headers = {
@@ -44,7 +49,7 @@ jobs:
         }
         
         def execute_tool(tool_slug, arguments):
-            """Execute a Composio tool"""
+            """Execute a Composio tool with detailed error handling"""
             payload = {
                 "tools": [{
                     "tool_slug": tool_slug,
@@ -53,14 +58,33 @@ jobs:
                 "sync_response_to_workbench": False
             }
             
-            response = requests.post(f"{BASE_URL}/multi-execute", headers=headers, json=payload)
-            response.raise_for_status()
+            print(f"🔧 Executing {tool_slug} with args: {json.dumps(arguments, indent=2)}")
             
-            result = response.json()
-            if result["data"]["success_count"] == 1:
-                return result["data"]["results"][0]["response"]["data"]
-            else:
-                raise Exception(f"Tool execution failed: {result}")
+            try:
+                response = requests.post(f"{BASE_URL}/multi-execute", headers=headers, json=payload)
+                print(f"📡 Response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    print(f"❌ HTTP Error: {response.status_code}")
+                    print(f"Response: {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+                
+                result = response.json()
+                print(f"📦 Response data: {json.dumps(result, indent=2)}")
+                
+                if result.get("data", {}).get("success_count") == 1:
+                    return result["data"]["results"][0]["response"]["data"]
+                else:
+                    error_details = result.get("data", {}).get("results", [{}])[0].get("response", {})
+                    print(f"❌ Tool execution failed: {json.dumps(error_details, indent=2)}")
+                    raise Exception(f"Tool execution failed: {error_details}")
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Request error: {str(e)}")
+                raise
+            except Exception as e:
+                print(f"❌ Unexpected error: {str(e)}")
+                raise
         
         try:
             print(f"🚀 Starting daily Instagram post at {datetime.now()}")
@@ -72,6 +96,7 @@ jobs:
             day_number = current_count + 1
             
             print(f"📅 Today will be: Dag {day_number}")
+            print(f"👤 Account: @{user_info.get('username', 'Unknown')}")
             
             # Step 2: Download DagligCeres image from Google Drive
             print("⬇️ Downloading DagligCeres from Google Drive...")
@@ -105,10 +130,11 @@ jobs:
             
             print(f"🎉 SUCCESS! Posted 'Dag {day_number}' to Instagram!")
             print(f"📱 Media ID: {media_id}")
-            print(f"👤 Account: @{user_info.get('username', 'Unknown')}")
             
         except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
+            print(f"❌ FINAL ERROR: {str(e)}")
+            import traceback
+            traceback.print_exc()
             exit(1)
         
         EOF
