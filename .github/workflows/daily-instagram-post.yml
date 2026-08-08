@@ -10,92 +10,105 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install Composio SDK
-      run: |
-        pip install composio-core
-        
     - name: Post DagligCeres to Instagram
       env:
         COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
       run: |
-        python << 'EOF'
+        # Create a temporary Python script
+        cat > post_instagram.py << 'SCRIPT'
+        import requests
+        import json
         import os
-        from composio import ComposioToolSet, Action
+        import time
         from datetime import datetime
         
-        # Initialize Composio toolset
-        toolset = ComposioToolSet(api_key=os.environ['COMPOSIO_API_KEY'])
+        # This is the EXACT same approach that worked in our manual tests
+        API_KEY = os.environ['COMPOSIO_API_KEY']
+        
+        def execute_composio_tool(tool_slug, arguments):
+            """Execute Composio tool using the same method that worked manually"""
+            url = "https://backend.composio.dev/api/v1/actions/multi-execute"
+            
+            headers = {
+                "X-API-Key": API_KEY,
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "tools": [{
+                    "tool_slug": tool_slug,
+                    "arguments": arguments
+                }],
+                "sync_response_to_workbench": False,
+                "session_id": "github_automation"
+            }
+            
+            print(f"🔧 Calling {tool_slug}...")
+            
+            response = requests.post(url, headers=headers, json=payload)
+            
+            if response.status_code != 200:
+                print(f"❌ HTTP Error {response.status_code}: {response.text}")
+                raise Exception(f"HTTP {response.status_code}")
+            
+            result = response.json()
+            
+            if result.get("data", {}).get("success_count") == 1:
+                return result["data"]["results"][0]["response"]["data"]
+            else:
+                print(f"❌ Tool failed: {json.dumps(result, indent=2)}")
+                raise Exception(f"Tool execution failed")
         
         try:
-            print(f"🚀 Starting daily Instagram post at {datetime.now()}")
+            print(f"🚀 Starting Instagram automation at {datetime.now()}")
             
-            # Step 1: Get Instagram account info for day numbering
+            # Step 1: Get Instagram info
             print("📊 Getting Instagram account info...")
-            user_info_result = toolset.execute_action(
-                action=Action.INSTAGRAM_GET_USER_INFO,
-                params={"ig_user_id": "me"}
-            )
+            user_info = execute_composio_tool("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me"})
             
-            media_count = user_info_result.get("media_count", 0)
-            day_number = media_count + 1
-            ig_user_id = user_info_result["id"]
-            username = user_info_result.get("username", "Unknown")
+            day_number = user_info.get("media_count", 0) + 1
+            ig_user_id = user_info["id"]
+            username = user_info.get("username", "unknown")
             
-            print(f"📅 Today will be: Dag {day_number}")
+            print(f"📅 Today: Dag {day_number}")
             print(f"👤 Account: @{username}")
             
-            # Step 2: Download image from Google Drive
-            print("⬇️ Downloading DagligCeres from Google Drive...")
-            download_result = toolset.execute_action(
-                action=Action.GOOGLEDRIVE_DOWNLOAD_FILE,
-                params={"fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"}
-            )
+            # Step 2: Download from Google Drive
+            print("⬇️ Downloading DagligCeres...")
+            download_result = execute_composio_tool("GOOGLEDRIVE_DOWNLOAD_FILE", {
+                "fileId": "1FpB9exKU8IuOeUqQjgdg56fNFZy-Ty4E"
+            })
             
             image_url = download_result["downloaded_file_content"]["s3url"]
-            print("✅ Image downloaded successfully")
+            print("✅ Downloaded successfully")
             
-            # Step 3: Create Instagram media container
-            print("📷 Creating Instagram media container...")
-            container_result = toolset.execute_action(
-                action=Action.INSTAGRAM_POST_IG_USER_MEDIA,
-                params={
-                    "ig_user_id": ig_user_id,
-                    "image_url": image_url,
-                    "caption": f"Dag {day_number}"
-                }
-            )
+            # Step 3: Create container
+            print("📷 Creating media container...")
+            container = execute_composio_tool("INSTAGRAM_POST_IG_USER_MEDIA", {
+                "ig_user_id": ig_user_id,
+                "image_url": image_url,
+                "caption": f"Dag {day_number}"
+            })
             
-            container_id = container_result["id"]
-            print(f"✅ Container created: {container_id}")
+            container_id = container["id"]
+            print(f"✅ Container: {container_id}")
             
-            # Step 4: Publish to Instagram
+            # Step 4: Publish
             print("🚀 Publishing to Instagram...")
-            publish_result = toolset.execute_action(
-                action=Action.INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH,
-                params={
-                    "ig_user_id": ig_user_id,
-                    "creation_id": container_id,
-                    "max_wait_seconds": 120
-                }
-            )
+            published = execute_composio_tool("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", {
+                "ig_user_id": ig_user_id,
+                "creation_id": container_id
+            })
             
-            media_id = publish_result["id"]
-            
-            print(f"🎉 SUCCESS! Posted 'Dag {day_number}' to Instagram!")
-            print(f"📱 Media ID: {media_id}")
+            print(f"🎉 SUCCESS! Posted 'Dag {day_number}'!")
+            print(f"📱 Media ID: {published['id']}")
             
         except Exception as e:
-            print(f"❌ FINAL ERROR: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ ERROR: {str(e)}")
             exit(1)
         
-        EOF
+        SCRIPT
+        
+        # Install requests and run the script
+        pip install requests
+        python post_instagram.py
