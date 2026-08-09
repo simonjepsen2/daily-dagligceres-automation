@@ -3,9 +3,10 @@ name: Daily DagligCeres Instagram Post
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: "0 12 * * *"
-
+schedule:
+  - cron: "0 12 * * *"
+    timezone: "Europe/Copenhagen"
+    
 jobs:
   post-to-instagram:
     runs-on: ubuntu-latest
