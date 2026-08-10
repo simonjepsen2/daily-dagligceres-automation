@@ -2,28 +2,35 @@ name: Daily DagligCeres Instagram Post
 
 on:
   workflow_dispatch:
-
   schedule:
-    - cron: "0 12 * * *"
-      timezone: "Europe/Copenhagen"
+    - cron: '0 12 * * *'   # 11:00 UTC — adjust to your preferred UTC time
 
 jobs:
   post-to-instagram:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Composio
         run: |
           python -m pip install --upgrade pip
           pip install "composio==0.18.0"
+
+      - name: Debug time and env
+        env:
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          import os
+          print("UTC now:", datetime.now(timezone.utc).isoformat())
+          print("Local now:", datetime.now().astimezone().isoformat())
+          print("COMPOSIO_API_KEY present:", bool(os.environ.get('COMPOSIO_API_KEY')))
+          PY
 
       - name: Run Instagram poster
         env:
