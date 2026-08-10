@@ -3,7 +3,8 @@ name: Daily DagligCeres Instagram Post
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 12 * * *'   # 11:00 UTC — adjust to your preferred UTC time
+    - cron: '0 10 * * *'   # 12:00 Denmark during CEST (UTC+2)
+    - cron: '0 11 * * *'   # 12:00 Denmark during CET (UTC+1)
 
 jobs:
   post-to-instagram:
@@ -14,6 +15,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Exit unless Copenhagen local noon
+        run: |
+          # GitHub Actions cron uses UTC. Denmark uses CET/CEST (UTC+1/UTC+2).
+          # We schedule the workflow at both possible UTC hours and only proceed
+          # when the local time in Europe/Copenhagen is 12:00 to avoid double posts.
+          if [ "$(TZ=Europe/Copenhagen date +%H)" != "12" ]; then
+            echo "Not 12:00 in Europe/Copenhagen — exiting without posting."
+            exit 0
+          fi
 
       - name: Install Composio
         run: |
@@ -26,9 +37,15 @@ jobs:
         run: |
           python - <<'PY'
           from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
           import os
           print("UTC now:", datetime.now(timezone.utc).isoformat())
-          print("Local now:", datetime.now().astimezone().isoformat())
+          print("Local now (system tz):", datetime.now().astimezone().isoformat())
+          try:
+              tz = ZoneInfo("Europe/Copenhagen")
+              print("Copenhagen now:", datetime.now(tz).isoformat())
+          except Exception as e:
+              print("Could not display Europe/Copenhagen time (zoneinfo):", e)
           print("COMPOSIO_API_KEY present:", bool(os.environ.get('COMPOSIO_API_KEY')))
           PY
 
