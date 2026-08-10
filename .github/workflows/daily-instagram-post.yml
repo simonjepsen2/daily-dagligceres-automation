@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: "0 12 * * *"
-      timezone: "Europe/Copenhagen"
+    - cron: "*/5 * * * *"
 
 jobs:
   post-to-instagram:
@@ -13,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
