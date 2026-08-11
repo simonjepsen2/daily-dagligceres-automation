@@ -3,8 +3,8 @@ name: Daily DagligCeres Instagram Post
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 10 * * *'   # 12:00 Denmark during CEST (UTC+2)
-    - cron: '0 11 * * *'   # 12:00 Denmark during CET (UTC+1)
+    - cron: '0 6 * * *'   # 7:00 Denmark during CEST (UTC+2)
+    - cron: '0 7 * * *'   # 7:00 Denmark during CET (UTC+1)
 
 jobs:
   post-to-instagram:
