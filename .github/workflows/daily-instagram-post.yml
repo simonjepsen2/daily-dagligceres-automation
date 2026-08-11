@@ -20,9 +20,9 @@ jobs:
         run: |
           # GitHub Actions cron uses UTC. Denmark uses CET/CEST (UTC+1/UTC+2).
           # We schedule the workflow at both possible UTC hours and only proceed
-          # when the local time in Europe/Copenhagen is 12:00 to avoid double posts.
-          if [ "$(TZ=Europe/Copenhagen date +%H)" != "12" ]; then
-            echo "Not 12:00 in Europe/Copenhagen — exiting without posting."
+          # when the local time in Europe/Copenhagen is 7:00 to avoid double posts.
+          if [ "$(TZ=Europe/Copenhagen date +%H)" != "7" ]; then
+            echo "Not 7:00 in Europe/Copenhagen — exiting without posting."
             exit 0
           fi
 
