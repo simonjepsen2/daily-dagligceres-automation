@@ -13,38 +13,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Exit unless Copenhagen local noon
-        run: |
-          # GitHub Actions cron uses UTC. Denmark uses CET/CEST (UTC+1/UTC+2).
-          # We schedule the workflow at both possible UTC hours and only proceed
-          # when the local time in Europe/Copenhagen is 7:00 to avoid double posts.
-          if [ "$(TZ=Europe/Copenhagen date +%H)" != "7" ]; then
-            echo "Not 7:00 in Europe/Copenhagen — exiting without posting."
-            exit 0
-          fi
-
       - name: Install Composio
         run: |
           python -m pip install --upgrade pip
           pip install "composio==0.18.0"
-
-      - name: Debug time and env
-        env:
-          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
-        run: |
-          python - <<'PY'
-          from datetime import datetime, timezone
-          from zoneinfo import ZoneInfo
-          import os
-          print("UTC now:", datetime.now(timezone.utc).isoformat())
-          print("Local now (system tz):", datetime.now().astimezone().isoformat())
-          try:
-              tz = ZoneInfo("Europe/Copenhagen")
-              print("Copenhagen now:", datetime.now(tz).isoformat())
-          except Exception as e:
-              print("Could not display Europe/Copenhagen time (zoneinfo):", e)
-          print("COMPOSIO_API_KEY present:", bool(os.environ.get('COMPOSIO_API_KEY')))
-          PY
 
       - name: Run Instagram poster
         env:
