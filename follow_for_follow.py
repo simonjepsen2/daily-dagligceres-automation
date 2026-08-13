@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+import json
 
 from composio import Composio
 
@@ -13,11 +14,14 @@ COMPOSIO_API_KEY = os.environ.get("COMPOSIO_API_KEY")
 
 USER_ID = "pg-test-469e4bb8-661d-424b-91f3-dd8309694059"
 
-# Limit for follow-backs per session
-MAX_FOLLOW_BACKS = 10
+# Limit for follows per session
+MAX_FOLLOWS = 20
 
-# Limit for engaging with followers
-MAX_ENGAGEMENTS = 5
+# Limit for unfollows per session
+MAX_UNFOLLOWS = 20
+
+# File to track previous followers
+FOLLOWERS_FILE = "followers_history.json"
 
 
 # ============================================================
@@ -41,6 +45,27 @@ composio = Composio(
         "instagram": "20260730_00",
     },
 )
+
+
+def load_previous_followers():
+    """Load the list of followers from previous run"""
+    if os.path.exists(FOLLOWERS_FILE):
+        try:
+            with open(FOLLOWERS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️  Could not load previous followers: {e}")
+            return []
+    return []
+
+
+def save_followers(followers_list):
+    """Save current followers list for next run"""
+    try:
+        with open(FOLLOWERS_FILE, 'w') as f:
+            json.dump(followers_list, f)
+    except Exception as e:
+        print(f"⚠️  Could not save followers list: {e}")
 
 
 try:
@@ -98,92 +123,18 @@ try:
 
 
     # ========================================================
-    # STEP 3 — GET FOLLOWER REQUESTS
+    # STEP 3 — GET CURRENT FOLLOWERS
     # ========================================================
 
     print("")
-    print("👥 Checking for follow requests...")
-
-    # Get pending follow requests
-    follower_requests_result = composio.tools.execute(
-        "INSTAGRAM_GET_FOLLOWER_REQUESTS",
-        user_id=USER_ID,
-        arguments={
-            "ig_user_id": ig_user_id,
-            "limit": MAX_FOLLOW_BACKS,
-        },
-    )
-
-    # Extract follower requests data
-    requests_data = follower_requests_result
-    if isinstance(follower_requests_result, dict):
-        if "data" in follower_requests_result:
-            requests_data = follower_requests_result["data"]
-
-    follower_requests = []
-    if isinstance(requests_data, list):
-        follower_requests = requests_data
-    elif isinstance(requests_data, dict) and "data" in requests_data:
-        follower_requests = requests_data.get("data", [])
-
-    print(f"✅ Found {len(follower_requests)} follow request(s).")
-
-
-    # ========================================================
-    # STEP 4 — ACCEPT FOLLOW REQUESTS (FOLLOW BACK)
-    # ========================================================
-
-    if follower_requests:
-        print("")
-        print("🔗 Processing follow requests...")
-
-        follow_back_count = 0
-
-        for requester in follower_requests[:MAX_FOLLOW_BACKS]:
-            try:
-                requester_id = requester.get("id")
-                requester_username = requester.get("username", "Unknown")
-
-                if not requester_id:
-                    print(f"⚠️  Skipping: Could not get ID for {requester_username}")
-                    continue
-
-                # Follow back the requester
-                follow_result = composio.tools.execute(
-                    "INSTAGRAM_FOLLOW_USER",
-                    user_id=USER_ID,
-                    arguments={
-                        "ig_user_id": ig_user_id,
-                        "user_id_to_follow": requester_id,
-                    },
-                )
-
-                print(f"✅ Followed back: @{requester_username}")
-                follow_back_count += 1
-
-            except Exception as follow_error:
-                print(f"⚠️  Failed to follow @{requester_username}: {follow_error}")
-                continue
-
-        print(f"✅ Successfully followed back {follow_back_count} users.")
-
-    else:
-        print("ℹ️  No pending follow requests.")
-
-
-    # ========================================================
-    # STEP 5 — ENGAGE WITH RECENT FOLLOWERS
-    # ========================================================
-
-    print("")
-    print("💬 Engaging with recent followers...")
+    print("👥 Getting current followers...")
 
     followers_result = composio.tools.execute(
         "INSTAGRAM_GET_FOLLOWERS",
         user_id=USER_ID,
         arguments={
             "ig_user_id": ig_user_id,
-            "limit": MAX_ENGAGEMENTS,
+            "limit": 100,
         },
     )
 
@@ -193,76 +144,170 @@ try:
         if "data" in followers_result:
             followers_data = followers_result["data"]
 
-    followers = []
+    current_followers = []
     if isinstance(followers_data, list):
-        followers = followers_data
+        current_followers = followers_data
     elif isinstance(followers_data, dict) and "data" in followers_data:
-        followers = followers_data.get("data", [])
+        current_followers = followers_data.get("data", [])
 
-    print(f"✅ Retrieved {len(followers)} recent followers.")
+    current_follower_ids = {str(f.get("id")) for f in current_followers if f.get("id")}
+    
+    print(f"✅ Retrieved {len(current_followers)} current followers.")
 
-    if followers:
+
+    # ========================================================
+    # STEP 4 — GET FOLLOWING LIST
+    # ========================================================
+
+    print("")
+    print("👤 Getting following list...")
+
+    following_result = composio.tools.execute(
+        "INSTAGRAM_GET_FOLLOWING",
+        user_id=USER_ID,
+        arguments={
+            "ig_user_id": ig_user_id,
+            "limit": 100,
+        },
+    )
+
+    # Extract following data
+    following_data = following_result
+    if isinstance(following_result, dict):
+        if "data" in following_result:
+            following_data = following_result["data"]
+
+    current_following = []
+    if isinstance(following_data, list):
+        current_following = following_data
+    elif isinstance(following_data, dict) and "data" in following_data:
+        current_following = following_data.get("data", [])
+
+    currently_following_ids = {str(f.get("id")) for f in current_following if f.get("id")}
+    
+    print(f"✅ Currently following {len(current_following)} accounts.")
+
+
+    # ========================================================
+    # STEP 5 — FIND NEW FOLLOWERS TO FOLLOW
+    # ========================================================
+
+    print("")
+    print("🔗 Finding new followers to follow back...")
+
+    # Get previous followers
+    previous_followers = load_previous_followers()
+    previous_follower_ids = set(previous_followers)
+
+    # Find new followers (in current but not in previous)
+    new_followers_ids = current_follower_ids - previous_follower_ids
+    new_followers = [f for f in current_followers if str(f.get("id")) in new_followers_ids]
+
+    # Filter: only follow those we're not already following
+    to_follow = [f for f in new_followers if str(f.get("id")) not in currently_following_ids]
+
+    print(f"✅ Found {len(new_followers)} new followers.")
+    print(f"✅ {len(to_follow)} of them are not being followed yet.")
+
+    if to_follow:
         print("")
-        print("📸 Liking recent posts from followers...")
+        print("🔗 Following new followers...")
 
-        engagement_count = 0
+        follow_count = 0
 
-        for follower in followers[:MAX_ENGAGEMENTS]:
+        for follower in to_follow[:MAX_FOLLOWS]:
             try:
-                follower_id = follower.get("id")
+                follower_id = str(follower.get("id"))
                 follower_username = follower.get("username", "Unknown")
 
                 if not follower_id:
                     print(f"⚠️  Skipping: Could not get ID for {follower_username}")
                     continue
 
-                # Get recent media from follower
-                media_result = composio.tools.execute(
-                    "INSTAGRAM_GET_USER_MEDIA",
+                # Follow the new follower
+                follow_result = composio.tools.execute(
+                    "INSTAGRAM_FOLLOW_USER",
                     user_id=USER_ID,
                     arguments={
-                        "ig_user_id": follower_id,
-                        "limit": 1,
+                        "ig_user_id": ig_user_id,
+                        "user_id_to_follow": follower_id,
                     },
                 )
 
-                # Extract media data
-                media_data = media_result
-                if isinstance(media_result, dict):
-                    if "data" in media_result:
-                        media_data = media_result["data"]
+                print(f"✅ Followed: @{follower_username}")
+                follow_count += 1
 
-                media_list = []
-                if isinstance(media_data, list):
-                    media_list = media_data
-                elif isinstance(media_data, dict) and "data" in media_data:
-                    media_list = media_data.get("data", [])
-
-                if media_list:
-                    latest_media = media_list[0]
-                    media_id = latest_media.get("id")
-
-                    if media_id:
-                        # Like the post
-                        like_result = composio.tools.execute(
-                            "INSTAGRAM_LIKE_MEDIA",
-                            user_id=USER_ID,
-                            arguments={
-                                "media_id": media_id,
-                            },
-                        )
-
-                        print(f"❤️  Liked post from @{follower_username}")
-                        engagement_count += 1
-
-            except Exception as engagement_error:
-                print(f"⚠️  Failed to engage with @{follower_username}: {engagement_error}")
+            except Exception as follow_error:
+                print(f"⚠️  Failed to follow @{follower_username}: {follow_error}")
                 continue
 
-        print(f"✅ Successfully engaged with {engagement_count} followers.")
+        print(f"✅ Successfully followed {follow_count} new followers.")
 
     else:
-        print("ℹ️  No recent followers to engage with.")
+        print("ℹ️  No new followers to follow.")
+
+
+    # ========================================================
+    # STEP 6 — FIND UNFOLLOWERS (People we follow but don't follow us)
+    # ========================================================
+
+    print("")
+    print("👋 Checking for unfollowers...")
+
+    following_ids_not_followers = currently_following_ids - current_follower_ids
+    unfollowers = [f for f in current_following if str(f.get("id")) in following_ids_not_followers]
+
+    print(f"✅ Found {len(unfollowers)} accounts that don't follow you back.")
+
+    if unfollowers:
+        print("")
+        print("👋 Unfollowing accounts that don't follow back...")
+
+        unfollow_count = 0
+
+        for unfollower in unfollowers[:MAX_UNFOLLOWS]:
+            try:
+                unfollower_id = str(unfollower.get("id"))
+                unfollower_username = unfollower.get("username", "Unknown")
+
+                if not unfollower_id:
+                    print(f"⚠️  Skipping: Could not get ID for {unfollower_username}")
+                    continue
+
+                # Unfollow the account
+                unfollow_result = composio.tools.execute(
+                    "INSTAGRAM_UNFOLLOW_USER",
+                    user_id=USER_ID,
+                    arguments={
+                        "ig_user_id": ig_user_id,
+                        "user_id_to_unfollow": unfollower_id,
+                    },
+                )
+
+                print(f"👋 Unfollowed: @{unfollower_username}")
+                unfollow_count += 1
+
+            except Exception as unfollow_error:
+                print(f"⚠️  Failed to unfollow @{unfollower_username}: {unfollow_error}")
+                continue
+
+        print(f"✅ Successfully unfollowed {unfollow_count} accounts.")
+
+    else:
+        print("ℹ️  No unfollowers found.")
+
+
+    # ========================================================
+    # STEP 7 — SAVE CURRENT FOLLOWERS FOR NEXT RUN
+    # ========================================================
+
+    print("")
+    print("💾 Saving followers list for next run...")
+
+    follower_ids_list = list(current_follower_ids)
+    save_followers(follower_ids_list)
+
+    print(f"✅ Saved {len(follower_ids_list)} followers.")
 
 
     # ========================================================
@@ -274,6 +319,8 @@ try:
     print("🎉 FOLLOW FOR FOLLOW COMPLETE!")
     print("🎉 =======================================")
     print(f"🎉 Account: @{username}")
+    print(f"🎉 New follows: {len(to_follow)} (up to {MAX_FOLLOWS})")
+    print(f"🎉 Unfollows: {len(unfollowers)} (up to {MAX_UNFOLLOWS})")
     print("🎉 =======================================")
 
 
